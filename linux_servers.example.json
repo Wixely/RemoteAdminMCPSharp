@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "defaultCredentials": {
+    "username": "remoteadmin",
+    "privateKeyPath": "C:\\Services\\RemoteAdminMCPSharp\\keys\\id_ed25519",
+    "useSudo": true
+  },
+  "groups": [
+    {
+      "name": "Production",
+      "description": "Production Linux hosts",
+      "groups": [
+        {
+          "name": "Trading",
+          "servers": [
+            {
+              "name": "prod-linux-trade-01",
+              "host": "prod-linux-trade-01.example.lan",
+              "description": "Primary trading host (linux)",
+              "tags": [ "trading", "prod" ]
+            }
+          ]
+        }
+      ],
+      "servers": [
+        {
+          "name": "prod-linux-db-01",
+          "host": "prod-linux-db-01.example.lan",
+          "tags": [ "db", "prod" ]
+        }
+      ]
+    },
+    {
+      "name": "NonProduction",
+      "groups": [],
+      "servers": [
+        {
+          "name": "dev-linux-app-01",
+          "host": "dev-linux-app-01.example.lan",
+          "tags": [ "dev" ],
+          "credentials": {
+            "username": "devadmin",
+            "password": "REPLACE_ME",
+            "port": 2222,
+            "useSudo": false
+          }
+        }
+      ]
+    }
+  ],
+  "servers": []
+}

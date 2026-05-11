@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "defaultCredentials": {
+    "domain": "EXAMPLE",
+    "username": "svc-remoteadmin",
+    "password": "REPLACE_ME"
+  },
+  "groups": [
+    {
+      "name": "Production",
+      "description": "Production Windows hosts",
+      "credentials": {
+        "domain": "EXAMPLE",
+        "username": "svc-remoteadmin-prod",
+        "password": "REPLACE_ME"
+      },
+      "groups": [
+        {
+          "name": "Trading",
+          "servers": [
+            {
+              "name": "PROD-TRADE-01",
+              "host": "prod-trade-01.example.lan",
+              "os": "windows",
+              "description": "Primary trading host",
+              "tags": [ "trading", "prod" ]
+            }
+          ]
+        }
+      ],
+      "servers": [
+        {
+          "name": "PROD-DB-01",
+          "host": "prod-db-01.example.lan",
+          "os": "windows",
+          "tags": [ "db", "prod" ]
+        }
+      ]
+    },
+    {
+      "name": "NonProduction",
+      "groups": [],
+      "servers": [
+        {
+          "name": "DEV-APP-01",
+          "host": "dev-app-01.example.lan",
+          "os": "windows",
+          "tags": [ "dev" ]
+        }
+      ]
+    }
+  ],
+  "servers": []
+}
