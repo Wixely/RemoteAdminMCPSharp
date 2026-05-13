@@ -1,8 +1,8 @@
 # RemoteAdminMCPSharp
 
-MCP (Model Context Protocol) server that lets agents run a strict, curated set of
+MCP (Model Context Protocol) server that exposes a strict, curated set of
 remote-administration commands against Windows hosts (over WinRM) and Linux hosts (over SSH).
-Speaks the Claude Code style MCP commands over **HTTP streaming**.
+It exposes an MCP endpoint over Streamable HTTP.
 
 ## Tools at a glance
 
@@ -31,8 +31,8 @@ Speaks the Claude Code style MCP commands over **HTTP streaming**.
 
 ```sh
 # 1. Clone, then create your live inventory files from the templates
-cp windows_servers.example.json windows_servers.json
-cp linux_servers.example.json   linux_servers.json
+cp remote_admin_windows_servers.example.json remote_admin_windows_servers.json
+cp remote_admin_linux_servers.example.json   remote_admin_linux_servers.json
 
 # 2. Edit the *.json files (NOT the .example.json) and fill in real hostnames + plaintext passwords.
 
@@ -46,9 +46,22 @@ ciphertext — see [Credentials & encryption](#credentials--encryption) below.
 
 Point your MCP client at `http://localhost:5706/mcp`.
 
+## Docker
+
 ```sh
-claude mcp add --transport http remote-admin http://localhost:5706/mcp
+docker run --rm -p 5706:5706 \
+  -v $(pwd)/config:/config \
+  -v $(pwd)/logs:/app/logs \
+  -e REMOTEADMINMCP_RemoteAdmin__WindowsInventoryPath=/config/remote_admin_windows_servers.json \
+  -e REMOTEADMINMCP_RemoteAdmin__LinuxInventoryPath=/config/remote_admin_linux_servers.json \
+  -e REMOTEADMINMCP_RemoteAdmin__CredentialProtection=aesgcm-keyfile \
+  -e REMOTEADMINMCP_RemoteAdmin__KeyFilePath=/config/master.key \
+  -e REMOTEADMINMCP_RemoteAdmin__AllowedServers__0=web01 \
+  -e REMOTEADMINMCP_Server__Password=change-me \
+  ghcr.io/wixely/remoteadminmcpsharp:latest
 ```
+
+Environment variables override `RemoteAdminMCPSharp.json`. Use the `REMOTEADMINMCP_` prefix and `__` for nested keys; arrays use numeric indexes such as `REMOTEADMINMCP_RemoteAdmin__AllowedServers__0=web01`, and booleans use `true` or `false`.
 
 ---
 
@@ -56,7 +69,7 @@ claude mcp add --transport http remote-admin http://localhost:5706/mcp
 
 This is the bit operators care about most. The short version:
 
-1. **You write plaintext** in `windows_servers.json` / `linux_servers.json` whenever you want
+1. **You write plaintext** in `remote_admin_windows_servers.json` / `remote_admin_linux_servers.json` whenever you want
    to add or update a password.
 2. **The service encrypts it** the next time it starts, swaps the plaintext field for an
    encrypted equivalent, and writes the file back atomically.
@@ -121,7 +134,7 @@ read it, they can decrypt the inventory. So:
 - The plaintext lives on disk in the window between when you save the file and when the service
   restarts. That window is intentional (it's how you enter passwords). For the rest of the
   lifecycle, only ciphertext sits on disk.
-- The `.gitignore` excludes `windows_servers.json`, `linux_servers.json`, and `master.key`.
+- The `.gitignore` excludes `remote_admin_windows_servers.json`, `remote_admin_linux_servers.json`, and `master.key`.
   Only the `*.example.json` templates are tracked.
 - The atomic rewrite is `write → rename`; a service crash mid-write leaves the original file
   untouched.
@@ -178,22 +191,21 @@ The full list of switches (matches the C# `Operation` enum):
 | Linux files | `LinuxWriteFile`, `LinuxAppendToFile`, `LinuxCreateFolder`, `LinuxDeleteFile`, `LinuxDeleteFolder`, `LinuxCopyPath`, `LinuxMovePath` |
 | Linux arbitrary | `LinuxRunCommand` (also requires `AllowArbitraryCommands=true`) |
 
-When a blocked tool is called, the agent gets a clear error naming the exact config key it
-needs flipped — easy to spot in logs.
+When a blocked tool is called, the server returns an error naming the exact config key that needs to be changed.
 
-## Stopping agents from hammering servers
+## Concurrency limits
 
 Two limits, both under `RemoteAdmin:Concurrency`:
 
 - **`MaxConcurrentPerServer`** (default `1`) — how many tool calls can be in-flight against the
-  same box simultaneously. Default of 1 means an agent firing five `win_list_processes` calls at
+  same box simultaneously. Default of 1 means five `win_list_processes` calls at
   the same host queues them strictly in order. Stops parallel hammering and avoids WinRM session
   contention.
 - **`MaxConcurrentGlobal`** (default `16`) — total in-flight across the whole inventory. Caps the
-  blast radius if an agent decides to fan out across hundreds of servers.
+  load from large fan-out requests across many servers.
 
 Slots are queued up to `AcquireTimeoutSeconds` (default `30`) before the call fails — the
-operation itself has its own (longer) timeout, this is just how long the agent's request waits in
+operation itself has its own (longer) timeout; this is just how long the request waits in
 line.
 
 Concurrency limits parallelism, not frequency. If you want to floor the *interval* between
@@ -206,7 +218,7 @@ set `MinIntervalPerServerMs` to that interval in milliseconds. It's off by defau
 - **Reachability**: TCP 5985 (HTTP) or 5986 (HTTPS) open from this server to the target.
 - **Auth**:
   - **Domain-joined target + domain-joined caller**: Kerberos just works; populate
-    `domain`/`username`/`password` in `windows_servers.json` (or omit and run under the caller's
+    `domain`/`username`/`password` in `remote_admin_windows_servers.json` (or omit and run under the caller's
     identity).
   - **Non-domain / cross-forest**: configure HTTPS WinRM **or** add the target to TrustedHosts on
     this machine: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value 'host1,host2'`.
@@ -229,12 +241,14 @@ set `MinIntervalPerServerMs` to that interval in milliseconds. It's off by defau
 
 ## Configuration reference
 
+Defaults live in `RemoteAdminMCPSharp.json`, with optional local overrides in `RemoteAdminMCPSharp.Local.json`. Environment variables and command-line arguments can override both.
+
 | Setting | Default | Description |
 | --- | --- | --- |
 | `RemoteAdmin:ReadOnly` | `true` | Blocks every non-diagnostic operation. |
 | `RemoteAdmin:AllowArbitraryCommands` | `false` | Master switch for the per-OS `*_run_command` tools. |
-| `RemoteAdmin:WindowsInventoryPath` | `windows_servers.json` | Windows inventory file. |
-| `RemoteAdmin:LinuxInventoryPath` | `linux_servers.json` | Linux inventory file. |
+| `RemoteAdmin:WindowsInventoryPath` | `remote_admin_windows_servers.json` | Windows inventory file. |
+| `RemoteAdmin:LinuxInventoryPath` | `remote_admin_linux_servers.json` | Linux inventory file. |
 | `RemoteAdmin:RdgImportPath` | _(none)_ | Folder containing `.rdg` files to merge into the Windows inventory at startup. |
 | `RemoteAdmin:CredentialProtection` | `auto` | `auto` / `dpapi-user` / `dpapi-machine` / `aesgcm-keyfile` / `none`. |
 | `RemoteAdmin:AutoProtectCredentials` | `true` | Encrypt-and-rewrite plaintexts on startup. |
@@ -268,7 +282,7 @@ sc.exe create RemoteAdminMCPSharp `
 sc.exe start RemoteAdminMCPSharp
 ```
 
-Put the service account's plaintext passwords in `windows_servers.json` and `linux_servers.json`
+Put the service account's plaintext passwords in `remote_admin_windows_servers.json` and `remote_admin_linux_servers.json`
 **before** the first start, then start the service as that account. The first start encrypts them
 under DPAPI for that account.
 
@@ -283,5 +297,5 @@ inventory. Group hierarchy and credential cascade are preserved.
 RDCMan stores its own passwords as DPAPI blobs under the encrypting user's profile. Those blobs
 are passed through verbatim — they'll only work if the service runs under that same Windows
 account on that same machine. The pragmatic path: import the `.rdg` once, then enter credentials
-in `windows_servers.json` for the servers you actually need to act on (entries there override
+in `remote_admin_windows_servers.json` for the servers you actually need to act on (entries there override
 any duplicate from the `.rdg`).
