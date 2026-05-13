@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using RemoteAdminMCPSharp.Configuration;
@@ -18,6 +19,7 @@ namespace RemoteAdminMCPSharp.Services;
 public sealed class ServerInventoryService
 {
     private readonly RemoteAdminOptions _options;
+    private readonly string _contentRoot;
     private readonly ILogger<ServerInventoryService> _logger;
     private readonly CredentialProtectionService _protection;
     private readonly Dictionary<string, ResolvedServer> _servers =
@@ -25,10 +27,12 @@ public sealed class ServerInventoryService
 
     public ServerInventoryService(
         IOptions<RemoteAdminOptions> options,
+        IHostEnvironment environment,
         ILogger<ServerInventoryService> logger,
         CredentialProtectionService protection)
     {
         _options = options.Value;
+        _contentRoot = environment.ContentRootPath;
         _logger = logger;
         _protection = protection;
         LoadAll();
@@ -41,35 +45,33 @@ public sealed class ServerInventoryService
         if (!_servers.TryGetValue(name, out var server))
             throw new McpException(
                 $"Unknown server '{name}'. Call the `list_servers` MCP tool to see the inventory " +
-                "configured in this MCP server's windows_servers.json / linux_servers.json files.");
+                "configured in this MCP server's remote_admin_windows_servers.json / remote_admin_linux_servers.json files.");
 
         if (_options.AllowedServers.Count > 0 &&
             !_options.AllowedServers.Contains(server.Name, StringComparer.OrdinalIgnoreCase))
         {
             throw new McpException(
                 $"Server '{name}' is blocked by MCP server configuration: it is not in the allow-list " +
-                "(RemoteAdmin:AllowedServers in appsettings.json). The operator restricts this MCP server " +
+                "(RemoteAdmin:AllowedServers in RemoteAdminMCPSharp.json). The operator restricts this MCP server " +
                 "to a specific set of hosts.");
         }
         if (_options.BlockedServers.Contains(server.Name, StringComparer.OrdinalIgnoreCase))
         {
             throw new McpException(
                 $"Server '{name}' is blocked by MCP server configuration: it is in the deny-list " +
-                "(RemoteAdmin:BlockedServers in appsettings.json).");
+                "(RemoteAdmin:BlockedServers in RemoteAdminMCPSharp.json).");
         }
         return server;
     }
 
     private void LoadAll()
     {
-        var contentRoot = AppContext.BaseDirectory;
-
-        LoadInventoryFile(ResolvePath(contentRoot, _options.WindowsInventoryPath), defaultOs: "windows");
-        LoadInventoryFile(ResolvePath(contentRoot, _options.LinuxInventoryPath), defaultOs: "linux");
+        LoadInventoryFile(ResolvePath(_contentRoot, _options.WindowsInventoryPath), defaultOs: "windows");
+        LoadInventoryFile(ResolvePath(_contentRoot, _options.LinuxInventoryPath), defaultOs: "linux");
 
         if (!string.IsNullOrWhiteSpace(_options.RdgImportPath))
         {
-            var rdgDir = ResolvePath(contentRoot, _options.RdgImportPath);
+            var rdgDir = ResolvePath(_contentRoot, _options.RdgImportPath);
             ImportRdg(rdgDir);
         }
 

@@ -56,7 +56,7 @@ public sealed class ServerEntry
 
     /// <summary>
     /// "windows" or "linux". When null/empty, the inventory file's default OS is used
-    /// (windows_servers.json → windows, linux_servers.json → linux).
+    /// (remote_admin_windows_servers.json -> windows, remote_admin_linux_servers.json -> linux).
     /// </summary>
     [JsonPropertyName("os")]
     public string? Os { get; set; }

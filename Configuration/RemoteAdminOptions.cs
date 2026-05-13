@@ -24,13 +24,13 @@ public sealed class RemoteAdminOptions
     /// Path to the Windows inventory/credentials file. Relative paths resolve from the executable
     /// directory.
     /// </summary>
-    public string WindowsInventoryPath { get; set; } = "windows_servers.json";
+    public string WindowsInventoryPath { get; set; } = "remote_admin_windows_servers.json";
 
     /// <summary>
     /// Path to the Linux inventory/credentials file. Relative paths resolve from the executable
     /// directory.
     /// </summary>
-    public string LinuxInventoryPath { get; set; } = "linux_servers.json";
+    public string LinuxInventoryPath { get; set; } = "remote_admin_linux_servers.json";
 
     /// <summary>
     /// Optional folder containing one or more .rdg (RDCMan) files. Servers found there are merged

@@ -34,23 +34,23 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="appsettings.json">
+    <None Update="RemoteAdminMCPSharp.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="appsettings.*.json">
+    <None Update="RemoteAdminMCPSharp.*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <DependentUpon>appsettings.json</DependentUpon>
+      <DependentUpon>RemoteAdminMCPSharp.json</DependentUpon>
     </None>
-    <None Update="windows_servers.example.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="linux_servers.example.json">
+    <None Update="remote_admin_windows_servers.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="windows_servers.json">
+    <None Update="remote_admin_linux_servers.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="linux_servers.json">
+    <None Update="remote_admin_windows_servers.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="remote_admin_linux_servers.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
