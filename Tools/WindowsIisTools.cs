@@ -197,8 +197,8 @@ public static class WindowsIisTools
         var target = inventory.GetRequired(server);
         var flag = action?.Trim().ToLowerInvariant() switch
         {
-            "stop"    => "/stop",
-            "start"   => "/start",
+            "stop" => "/stop",
+            "start" => "/start",
             "restart" => "/restart",
             null or "" => "/restart",
             _ => throw new ArgumentException("action must be one of: restart, stop, start"),

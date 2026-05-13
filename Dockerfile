@@ -1,30 +1,35 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS restore
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 WORKDIR /src
 
+COPY NuGet.config global.json Directory.Build.props Directory.Packages.props ./
 COPY RemoteAdminMCPSharp.csproj ./
 RUN dotnet restore RemoteAdminMCPSharp.csproj
 
-FROM restore AS publish
-COPY . ./
+COPY . .
 RUN dotnet publish RemoteAdminMCPSharp.csproj \
     -c Release \
     --no-restore \
     -o /app/publish \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 WORKDIR /app
 
-ENV ASPNETCORE_ENVIRONMENT=Production \
+ENV DOTNET_ENVIRONMENT=Production \
+    ASPNETCORE_ENVIRONMENT=Production \
+    DOTNET_RUNNING_IN_CONTAINER=true \
     REMOTEADMINMCP_Server__Host=0.0.0.0 \
-    REMOTEADMINMCP_Server__Port=5079
+    REMOTEADMINMCP_Server__Port=5706 \
+    REMOTEADMINMCP_Server__Path=/mcp \
+    REMOTEADMINMCP_RemoteAdmin__ReadOnly=true
 
-COPY --from=publish /app/publish ./
-RUN mkdir -p logs && chown -R $APP_UID:0 /app
+RUN mkdir -p /app/logs && chown -R $APP_UID:0 /app
+COPY --from=build --chown=$APP_UID:0 /app/publish ./
 
 USER $APP_UID
-EXPOSE 5079
+EXPOSE 5706
+VOLUME ["/app/logs"]
 
 ENTRYPOINT ["dotnet", "RemoteAdminMCPSharp.dll"]

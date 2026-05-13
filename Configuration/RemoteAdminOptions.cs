@@ -96,7 +96,7 @@ public sealed class ServerOptions
     public const string SectionName = "Server";
 
     public string Host { get; set; } = "localhost";
-    public int Port { get; set; } = 5079;
+    public int Port { get; set; } = 5706;
     public string Path { get; set; } = "/mcp";
 
     /// <summary>Service name when running as a Windows Service.</summary>

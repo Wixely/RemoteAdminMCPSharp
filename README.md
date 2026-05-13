@@ -44,10 +44,10 @@ On first start the service encrypts the plaintext passwords in those files, rewr
 ciphertext, and prints how many secrets it rotated. From then on the on-disk files contain only
 ciphertext — see [Credentials & encryption](#credentials--encryption) below.
 
-Point your MCP client at `http://localhost:5079/mcp`.
+Point your MCP client at `http://localhost:5706/mcp`.
 
 ```sh
-claude mcp add --transport http remote-admin http://localhost:5079/mcp
+claude mcp add --transport http remote-admin http://localhost:5706/mcp
 ```
 
 ---
@@ -245,7 +245,7 @@ set `MinIntervalPerServerMs` to that interval in milliseconds. It's off by defau
 | `RemoteAdmin:Concurrency:MaxConcurrentGlobal` | `16` | Max parallel operations across the whole inventory. |
 | `RemoteAdmin:Concurrency:AcquireTimeoutSeconds` | `30` | How long to wait for a slot before failing the call. |
 | `RemoteAdmin:Concurrency:MinIntervalPerServerMs` | `0` | Optional floor on time between operations against the same server (rate-limit). 0 disables. |
-| `Server:Port` | `5079` | HTTP port. |
+| `Server:Port` | `5706` | HTTP port. |
 | `Server:WindowsServiceName` | `RemoteAdminMCPSharp` | Used when launched by the Service Control Manager. |
 
 ---
