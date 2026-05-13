@@ -23,6 +23,7 @@ ENV DOTNET_ENVIRONMENT=Production \
     REMOTEADMINMCP_Server__Host=0.0.0.0 \
     REMOTEADMINMCP_Server__Port=5706 \
     REMOTEADMINMCP_Server__Path=/mcp \
+    REMOTEADMINMCP_Server__Password= \
     REMOTEADMINMCP_RemoteAdmin__ReadOnly=true
 
 RUN mkdir -p /app/logs && chown -R $APP_UID:0 /app

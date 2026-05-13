@@ -145,6 +145,52 @@ public static class WindowsIisTools
         return RunSiteAction(inventory, exec, server, siteName, "Stop-Website");
     }
 
+    [McpServerTool(Name = "win_iis_delete_site"),
+     Description("Remove an IIS site definition from IIS without deleting its physical files. Blocked by RemoteAdmin:Operations:WinIisDeleteSite.")]
+    public static string DeleteSite(
+        RemoteAdminService admin,
+        ServerInventoryService inventory,
+        PowerShellRemoteExecutor exec,
+        [Description("Server name as it appears in the inventory")] string server,
+        [Description("IIS site name")] string siteName)
+    {
+        admin.EnsureOperationAllowed(Operation.WinIisDeleteSite);
+        var target = inventory.GetRequired(server);
+        const string script = """
+            param($name)
+            Import-Module WebAdministration -ErrorAction Stop
+
+            $site = Get-Website -Name $name -ErrorAction SilentlyContinue
+            if (-not $site) {
+                throw "IIS site not found: $name"
+            }
+
+            $bindings = @(
+                Get-WebBinding -Name $name |
+                    ForEach-Object {
+                        [PSCustomObject]@{
+                            Protocol           = $_.protocol
+                            BindingInformation = $_.bindingInformation
+                        }
+                    }
+            )
+
+            $physicalPath = $site.physicalPath
+            $applicationPool = $site.applicationPool
+            Remove-Website -Name $name -ErrorAction Stop
+
+            [PSCustomObject]@{
+                Name            = $name
+                RemovedFromIis  = $true
+                FilesDeleted    = $false
+                PhysicalPath    = $physicalPath
+                ApplicationPool = $applicationPool
+                Bindings        = $bindings
+            }
+            """;
+        return exec.InvokeRemoteJson(target, script, new object?[] { siteName }, jsonDepth: 4);
+    }
+
     [McpServerTool(Name = "win_iis_start_app_pool"),
      Description("Start an IIS application pool on a remote Windows host. Blocked by RemoteAdmin:Operations:WinIisStartAppPool.")]
     public static string StartAppPool(
@@ -182,6 +228,73 @@ public static class WindowsIisTools
     {
         admin.EnsureOperationAllowed(Operation.WinIisRecycleAppPool);
         return RunAppPoolAction(inventory, exec, server, appPoolName, "Restart-WebAppPool");
+    }
+
+    [McpServerTool(Name = "win_iis_delete_app_pool"),
+     Description("Remove an IIS application pool definition without deleting site or application files. Refuses to delete an app pool still used by sites or applications unless force=true. Blocked by RemoteAdmin:Operations:WinIisDeleteAppPool.")]
+    public static string DeleteAppPool(
+        RemoteAdminService admin,
+        ServerInventoryService inventory,
+        PowerShellRemoteExecutor exec,
+        [Description("Server name as it appears in the inventory")] string server,
+        [Description("IIS application pool name")] string appPoolName,
+        [Description("If true, delete even when the app pool is still referenced by sites or applications. Default false.")] bool force = false)
+    {
+        admin.EnsureOperationAllowed(Operation.WinIisDeleteAppPool);
+        var target = inventory.GetRequired(server);
+        const string script = """
+            param($name, $force)
+            Import-Module WebAdministration -ErrorAction Stop
+
+            $poolPath = "IIS:\AppPools\$name"
+            $pool = Get-Item -LiteralPath $poolPath -ErrorAction SilentlyContinue
+            if (-not $pool) {
+                throw "IIS application pool not found: $name"
+            }
+
+            $references = @()
+            foreach ($site in Get-Website) {
+                if ($site.applicationPool -eq $name) {
+                    $references += [PSCustomObject]@{
+                        Type = 'Site'
+                        Name = $site.name
+                        Path = $site.name
+                    }
+                }
+
+                foreach ($app in Get-WebApplication -Site $site.name) {
+                    if ($app.applicationPool -eq $name) {
+                        $references += [PSCustomObject]@{
+                            Type = 'Application'
+                            Name = $app.path
+                            Path = "$($site.name)$($app.path)"
+                        }
+                    }
+                }
+            }
+
+            if ($references.Count -gt 0 -and -not $force) {
+                $names = ($references | ForEach-Object { "$($_.Type):$($_.Path)" }) -join ', '
+                throw "IIS application pool '$name' is still referenced by: $names. Pass force=true to remove it anyway."
+            }
+
+            $state = Get-WebAppPoolState -Name $name -ErrorAction SilentlyContinue
+            $managedRuntimeVersion = $pool.managedRuntimeVersion
+            $managedPipelineMode = $pool.managedPipelineMode
+            Remove-WebAppPool -Name $name -ErrorAction Stop
+
+            [PSCustomObject]@{
+                Name                  = $name
+                RemovedFromIis        = $true
+                FilesDeleted          = $false
+                Forced                = [bool]$force
+                PreviousState         = if ($state) { $state.Value } else { $null }
+                ManagedRuntimeVersion = $managedRuntimeVersion
+                ManagedPipelineMode   = $managedPipelineMode
+                References            = $references
+            }
+            """;
+        return exec.InvokeRemoteJson(target, script, new object?[] { appPoolName, force }, jsonDepth: 5);
     }
 
     [McpServerTool(Name = "win_iis_reset"),

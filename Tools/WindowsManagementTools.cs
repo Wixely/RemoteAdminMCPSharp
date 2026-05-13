@@ -53,6 +53,40 @@ public static class WindowsManagementTools
         return RunServiceCommand(inventory, exec, server, serviceName, "Restart-Service -Force");
     }
 
+    [McpServerTool(Name = "win_set_service_startup_type"),
+     Description("Change a Windows service startup type on a remote machine. startupType must be Automatic, Manual, or Disabled. Blocked by RemoteAdmin:Operations:WinSetServiceStartupType.")]
+    public static string SetServiceStartupType(
+        RemoteAdminService admin,
+        ServerInventoryService inventory,
+        PowerShellRemoteExecutor exec,
+        [Description("Server name as it appears in the inventory")] string server,
+        [Description("Service name (the short Name, not DisplayName)")] string serviceName,
+        [Description("Startup type: Automatic | Manual | Disabled")] string startupType)
+    {
+        admin.EnsureOperationAllowed(Operation.WinSetServiceStartupType);
+        var target = inventory.GetRequired(server);
+        const string script = """
+            param($name, $startupType)
+            $allowed = @('Automatic', 'Manual', 'Disabled')
+            $normalized = $allowed | Where-Object { $_ -ieq $startupType } | Select-Object -First 1
+            if (-not $normalized) {
+                throw "Invalid startupType '$startupType'. Expected one of: Automatic, Manual, Disabled."
+            }
+
+            $svc = Get-Service -Name $name -ErrorAction Stop
+            Set-Service -Name $name -StartupType $normalized -ErrorAction Stop
+            $updated = Get-Service -Name $name -ErrorAction Stop
+            [PSCustomObject]@{
+                Name              = $updated.Name
+                DisplayName       = $updated.DisplayName
+                PreviousStartType = $svc.StartType.ToString()
+                StartType         = $updated.StartType.ToString()
+                Status            = $updated.Status.ToString()
+            }
+            """;
+        return exec.InvokeRemoteJson(target, script, new object?[] { serviceName, startupType }, jsonDepth: 3);
+    }
+
     [McpServerTool(Name = "win_create_service"),
      Description("Create a new Windows service on a remote machine via New-Service. Required: name + binaryPath. Optional: displayName, description, startupType (Automatic/AutomaticDelayedStart/Manual/Disabled — default Manual), and dependencies (comma-separated service short-names). The new service runs as LocalSystem; for a different account use win_run_command with sc.exe config afterwards. Blocked by RemoteAdmin:Operations:WinCreateService.")]
     public static string CreateService(

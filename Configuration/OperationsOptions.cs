@@ -11,6 +11,7 @@ public enum Operation
     WinStartService,
     WinStopService,
     WinRestartService,
+    WinSetServiceStartupType,
     WinCreateService,
     WinDeleteService,
     WinKillProcess,
@@ -27,9 +28,11 @@ public enum Operation
     // ---- Windows: IIS ----
     WinIisStartSite,
     WinIisStopSite,
+    WinIisDeleteSite,
     WinIisStartAppPool,
     WinIisStopAppPool,
     WinIisRecycleAppPool,
+    WinIisDeleteAppPool,
     WinIisReset,
 
     // ---- Windows: arbitrary command ----
@@ -67,6 +70,7 @@ public sealed class OperationsOptions
     public bool WinStartService { get; set; } = false;
     public bool WinStopService { get; set; } = false;
     public bool WinRestartService { get; set; } = false;
+    public bool WinSetServiceStartupType { get; set; } = false;
     public bool WinCreateService { get; set; } = false;
     public bool WinDeleteService { get; set; } = false;
     public bool WinKillProcess { get; set; } = false;
@@ -83,9 +87,11 @@ public sealed class OperationsOptions
     // Windows: IIS
     public bool WinIisStartSite { get; set; } = false;
     public bool WinIisStopSite { get; set; } = false;
+    public bool WinIisDeleteSite { get; set; } = false;
     public bool WinIisStartAppPool { get; set; } = false;
     public bool WinIisStopAppPool { get; set; } = false;
     public bool WinIisRecycleAppPool { get; set; } = false;
+    public bool WinIisDeleteAppPool { get; set; } = false;
     public bool WinIisReset { get; set; } = false;
 
     // Windows: arbitrary
@@ -114,6 +120,7 @@ public sealed class OperationsOptions
         Operation.WinStartService => WinStartService,
         Operation.WinStopService => WinStopService,
         Operation.WinRestartService => WinRestartService,
+        Operation.WinSetServiceStartupType => WinSetServiceStartupType,
         Operation.WinCreateService => WinCreateService,
         Operation.WinDeleteService => WinDeleteService,
         Operation.WinKillProcess => WinKillProcess,
@@ -126,9 +133,11 @@ public sealed class OperationsOptions
         Operation.WinMovePath => WinMovePath,
         Operation.WinIisStartSite => WinIisStartSite,
         Operation.WinIisStopSite => WinIisStopSite,
+        Operation.WinIisDeleteSite => WinIisDeleteSite,
         Operation.WinIisStartAppPool => WinIisStartAppPool,
         Operation.WinIisStopAppPool => WinIisStopAppPool,
         Operation.WinIisRecycleAppPool => WinIisRecycleAppPool,
+        Operation.WinIisDeleteAppPool => WinIisDeleteAppPool,
         Operation.WinIisReset => WinIisReset,
         Operation.WinRunCommand => WinRunCommand,
         Operation.LinuxStartService => LinuxStartService,

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RemoteAdminMCPSharp.Configuration;
+using RemoteAdminMCPSharp.Hosting;
 using RemoteAdminMCPSharp.Services;
 using Serilog;
 
@@ -21,6 +22,10 @@ public static class Program
         // C:\Windows\System32, so resolve config and logs relative to the exe.
         var contentRoot = AppContext.BaseDirectory;
         var isService = WindowsServiceHelpers.IsWindowsService();
+        if (!isService)
+        {
+            McpSharpIcon.ApplyConsoleWindowIcon();
+        }
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
@@ -147,6 +152,9 @@ public static class Program
                 isService ? "WindowsService" : "Console",
                 contentRoot);
 
+            app.UseMiddleware<McpPasswordMiddleware>();
+
+            app.MapFavicon();
             app.MapGet("/healthz", () => new
             {
                 status = "ok",

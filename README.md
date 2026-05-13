@@ -10,8 +10,8 @@ Speaks the Claude Code style MCP commands over **HTTP streaming**.
 - Diagnostics: `win_list_services`, `win_service_details`, `win_list_processes`, `win_list_storage`, `win_list_active_users`, `win_cpu_usage`, `win_ram_usage`, `win_os_version`, `win_system_info`
 - IIS (read): `win_iis_list_sites`, `win_iis_list_app_pools`
 - Files (read): `win_list_files`, `win_read_file`, `win_file_properties`
-- Management *(gated by `ReadOnly`)*: `win_start_service`, `win_stop_service`, `win_restart_service`, `win_create_service`, `win_delete_service`, `win_kill_process`
-- IIS management *(gated by `ReadOnly`)*: `win_iis_start_site`, `win_iis_stop_site`, `win_iis_start_app_pool`, `win_iis_stop_app_pool`, `win_iis_recycle_app_pool`, `win_iis_reset`
+- Management *(gated by `ReadOnly`)*: `win_start_service`, `win_stop_service`, `win_restart_service`, `win_set_service_startup_type`, `win_create_service`, `win_delete_service`, `win_kill_process`
+- IIS management *(gated by `ReadOnly`)*: `win_iis_start_site`, `win_iis_stop_site`, `win_iis_delete_site`, `win_iis_start_app_pool`, `win_iis_stop_app_pool`, `win_iis_recycle_app_pool`, `win_iis_delete_app_pool`, `win_iis_reset`
 - File management *(gated by `ReadOnly`)*: `win_write_file`, `win_append_to_file`, `win_create_folder`, `win_delete_file`, `win_delete_folder`, `win_copy_path`, `win_move_path`
 - Arbitrary *(gated by `ReadOnly` AND `AllowArbitraryCommands`)*: `win_run_command`
 
@@ -170,8 +170,8 @@ The full list of switches (matches the C# `Operation` enum):
 
 | Group | Switches |
 |---|---|
-| Windows services / processes | `WinStartService`, `WinStopService`, `WinRestartService`, `WinCreateService`, `WinDeleteService`, `WinKillProcess` |
-| Windows IIS | `WinIisStartSite`, `WinIisStopSite`, `WinIisStartAppPool`, `WinIisStopAppPool`, `WinIisRecycleAppPool`, `WinIisReset` |
+| Windows services / processes | `WinStartService`, `WinStopService`, `WinRestartService`, `WinSetServiceStartupType`, `WinCreateService`, `WinDeleteService`, `WinKillProcess` |
+| Windows IIS | `WinIisStartSite`, `WinIisStopSite`, `WinIisDeleteSite`, `WinIisStartAppPool`, `WinIisStopAppPool`, `WinIisRecycleAppPool`, `WinIisDeleteAppPool`, `WinIisReset` |
 | Windows files | `WinWriteFile`, `WinAppendToFile`, `WinCreateFolder`, `WinDeleteFile`, `WinDeleteFolder`, `WinCopyPath`, `WinMovePath` |
 | Windows arbitrary | `WinRunCommand` (also requires `AllowArbitraryCommands=true`) |
 | Linux services / processes | `LinuxStartService`, `LinuxStopService`, `LinuxRestartService`, `LinuxKillProcess` |
@@ -246,7 +246,10 @@ set `MinIntervalPerServerMs` to that interval in milliseconds. It's off by defau
 | `RemoteAdmin:Concurrency:AcquireTimeoutSeconds` | `30` | How long to wait for a slot before failing the call. |
 | `RemoteAdmin:Concurrency:MinIntervalPerServerMs` | `0` | Optional floor on time between operations against the same server (rate-limit). 0 disables. |
 | `Server:Port` | `5706` | HTTP port. |
+| `Server:Password` | blank | Optional MCP endpoint password; blank disables password auth. |
 | `Server:WindowsServiceName` | `RemoteAdminMCPSharp` | Used when launched by the Service Control Manager. |
+
+When `Server:Password` is set, MCP requests must provide the password as `Authorization: Bearer <password>`, the Basic auth password, or `X-MCP-Password`.
 
 ---
 
