@@ -158,6 +158,7 @@ public static class WindowsLargeFileSearchTools
                 public bool MatchLimitReached { get; set; }
                 public bool ByteLimitReached { get; set; }
                 public bool TimeLimitReached { get; set; }
+                public bool ContinuationBlocked { get; set; }
                 public bool HasMore { get; set; }
                 public bool GrowthDetected { get; set; }
                 public bool TruncationDetected { get; set; }
@@ -334,6 +335,15 @@ public static class WindowsLargeFileSearchTools
                         result.NextOffset = startOffset;
                         result.NextLineNumber = continuationLineNumber;
 
+                        if (startOffset % encoding.UnitSize != 0)
+                        {
+                            result.Status = "InvalidContinuation";
+                            result.ContinuationBlocked = true;
+                            result.Error = "The continuation offset is not aligned to a complete " +
+                                encoding.Name + " code unit. Reuse an offset returned by this tool.";
+                            return result;
+                        }
+
                         long snapshotEnd = Math.Min(result.SnapshotLengthBytes, result.StartingLengthBytes);
                         if (requestedSnapshotLength >= 0 &&
                             result.StartingLengthBytes < requestedSnapshotLength)
@@ -387,7 +397,9 @@ public static class WindowsLargeFileSearchTools
                                 encoding,
                                 mode,
                                 snapshotEnd,
-                                result.StartOffset + maxBytesToScan,
+                                result.StartOffset > Int64.MaxValue - maxBytesToScan
+                                    ? Int64.MaxValue
+                                    : result.StartOffset + maxBytesToScan,
                                 maxLineBytes,
                                 maxReturnedLineChars,
                                 lineNumber,
@@ -408,6 +420,14 @@ public static class WindowsLargeFileSearchTools
                                     result.IncompleteTrailingRecord = true;
                                     result.NextOffset = read.PartialLineOffset;
                                     result.NextLineNumber = lineNumber;
+                                    if (read.ByteLimit || read.TimeLimit)
+                                    {
+                                        result.Status = "LimitReachedMidLine";
+                                        result.ContinuationBlocked = true;
+                                        result.Error = "The scan limit was reached before the current line ended, " +
+                                            "so no lossless continuation is available. Increase maxBytesToScan " +
+                                            "or maxElapsedSeconds and retry this page.";
+                                    }
                                 }
                                 break;
                             }
@@ -655,7 +675,9 @@ public static class WindowsLargeFileSearchTools
                                 tail[tail.Length - 1] = current;
                             }
 
-                            if (tailCount == tail.Length && EndsWith(tail, encoding.NewLine))
+                            if (tailCount == tail.Length &&
+                                rawLength % encoding.UnitSize == 0 &&
+                                EndsWith(tail, encoding.NewLine))
                             {
                                 long contentLength = rawLength - encoding.NewLine.Length;
                                 bool storedEntireLine = rawLength <= maxLineBytes;

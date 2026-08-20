@@ -241,6 +241,11 @@ oversized lines, incomplete trailing records, regex timeouts, and which scan lim
 page. Cancelling the MCP request or reaching the operation timeout stops the WinRM pipeline and
 releases the target-side handles.
 
+Continuation offsets always identify complete line boundaries. If a byte or elapsed-time limit is
+reached partway through a line, the result uses `Status: LimitReachedMidLine` and
+`ContinuationBlocked: true`; increase the relevant limit and retry that page rather than reusing
+its unchanged offset.
+
 ## Prerequisites — Windows targets
 
 - **WinRM enabled**: `Enable-PSRemoting -Force` (already on by default on Windows Server).

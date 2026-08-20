@@ -15,7 +15,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
 
     public WindowsLargeFileSearchScriptTests() => Directory.CreateDirectory(_directory);
 
-    [Fact]
+    [WindowsFact]
     public void LiteralSearchReturnsContextOffsetsAndStableContinuation()
     {
         var path = WriteFile(
@@ -49,7 +49,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.Equal("match two", Value<string>(secondMatch, "Text"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void RegexSearchSupportsUtf16AndByteOffsets()
     {
         var path = WriteFile(
@@ -71,7 +71,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.Equal("Error 123", Value<string>(match, "Text"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void SnapshotDoesNotSearchContentAppendedAfterFirstPage()
     {
         var path = WriteFile("growth.log", "start\r\n", new UTF8Encoding(false));
@@ -90,7 +90,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.True(Value<bool>(second, "GrowthDetected"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void ContinuationDetectsReplacementBeforeResuming()
     {
         var path = WriteFile("rotating.log", "before rotation\r\n", new UTF8Encoding(false));
@@ -112,7 +112,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.Empty(Array(second, "Matches"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void ContinuationDetectsInPlaceTruncation()
     {
         var path = WriteFile("truncated.log", "line one\r\nline two\r\n", new UTF8Encoding(false));
@@ -134,7 +134,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.True(Value<bool>(second, "TruncationDetected"));
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task FollowModeFindsCompatibleAppend()
     {
         var path = WriteFile("follow.log", "start\r\n", new UTF8Encoding(false));
@@ -153,7 +153,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.True(Value<bool>(result, "GrowthDetected"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void ExclusiveLockReturnsClearDiagnostic()
     {
         var path = WriteFile("locked.log", "content\r\n", new UTF8Encoding(false));
@@ -165,7 +165,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.Contains("FileShare.ReadWrite | FileShare.Delete", Value<string>(result, "Error"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void InvalidBytesAreReportedWithoutCrashing()
     {
         var path = Path.Combine(_directory, "invalid-utf8.log");
@@ -178,7 +178,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.Empty(Array(result, "Matches"));
     }
 
-    [Fact]
+    [WindowsFact]
     public void MatchingUsesTheLineScanLimitRatherThanTheSmallerDisplayLimit()
     {
         var path = WriteFile(
@@ -193,7 +193,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         Assert.False(Value<bool>(match, "LineTruncated"));
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task StoppingThePipelineCancelsFollowAndReleasesTheFilePromptly()
     {
         var path = WriteFile("cancel.log", "start\r\n", new UTF8Encoding(false));
@@ -211,6 +211,60 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
 
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.True(exclusive.CanWrite);
+    }
+
+    [WindowsFact]
+    public void Utf16NewlineDetectionRespectsCodeUnitAlignment()
+    {
+        var path = WriteFile(
+            "utf16-alignment.log",
+            "\u0a01\u0100 NEEDLE\r\nlast\r\n",
+            new UnicodeEncoding(bigEndian: false, byteOrderMark: true));
+
+        var result = Invoke(path, "needle", encoding: "utf16le");
+
+        Assert.Equal("Ok", Value<string>(result, "Status"));
+        var match = Assert.Single(Array(result, "Matches"));
+        Assert.Equal(1L, Value<long>(match, "LineNumber"));
+        Assert.Equal("\u0a01\u0100 NEEDLE", Value<string>(match, "Text"));
+        Assert.Equal(0L, Value<long>(result, "DecodingFailures"));
+    }
+
+    [WindowsFact]
+    public void ByteLimitInsideLineReturnsExplicitNonPageableDiagnostic()
+    {
+        var path = WriteFile(
+            "page-limit-mid-line.log",
+            "a line longer than the page limit\r\nNEEDLE\r\n",
+            new UTF8Encoding(false));
+
+        var result = Invoke(path, "needle", maxBytesToScan: 8);
+
+        Assert.Equal("LimitReachedMidLine", Value<string>(result, "Status"));
+        Assert.True(Value<bool>(result, "ByteLimitReached"));
+        Assert.True(Value<bool>(result, "ContinuationBlocked"));
+        Assert.True(Value<bool>(result, "HasMore"));
+        Assert.Equal(0L, Value<long>(result, "NextOffset"));
+        Assert.Contains("no lossless continuation", Value<string>(result, "Error"));
+    }
+
+    [WindowsFact]
+    public void MisalignedMultibyteContinuationIsRejected()
+    {
+        var path = WriteFile(
+            "misaligned-continuation.log",
+            "first\r\nsecond\r\n",
+            new UnicodeEncoding(bigEndian: false, byteOrderMark: true));
+
+        var result = Invoke(
+            path,
+            "second",
+            encoding: "utf16le",
+            continuationOffset: 3);
+
+        Assert.Equal("InvalidContinuation", Value<string>(result, "Status"));
+        Assert.True(Value<bool>(result, "ContinuationBlocked"));
+        Assert.Empty(Array(result, "Matches"));
     }
 
     private string WriteFile(string name, string contents, Encoding encoding)
@@ -233,7 +287,8 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         long continuationLineNumber = 1,
         long snapshotLengthBytes = -1,
         string? expectedFileIdentity = null,
-        int maxReturnedLineChars = 8_192)
+        int maxReturnedLineChars = 8_192,
+        long maxBytesToScan = 16L * 1024 * 1024)
     {
         using var powershell = CreateInvocation(
             path,
@@ -248,7 +303,8 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
             continuationLineNumber,
             snapshotLengthBytes,
             expectedFileIdentity,
-            maxReturnedLineChars);
+            maxReturnedLineChars,
+            maxBytesToScan);
 
         var output = powershell.Invoke();
         if (powershell.HadErrors)
@@ -273,7 +329,8 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
         long continuationLineNumber = 1,
         long snapshotLengthBytes = -1,
         string? expectedFileIdentity = null,
-        int maxReturnedLineChars = 8_192)
+        int maxReturnedLineChars = 8_192,
+        long maxBytesToScan = 16L * 1024 * 1024)
     {
         var powershell = PowerShell.Create();
         powershell.AddScript(WindowsLargeFileSearchTools.SearchScript)
@@ -284,7 +341,7 @@ public sealed class WindowsLargeFileSearchScriptTests : IDisposable
             .AddArgument(encoding)
             .AddArgument(contextLines)
             .AddArgument(maxMatches)
-            .AddArgument(16L * 1024 * 1024)
+            .AddArgument(maxBytesToScan)
             .AddArgument(65_536)
             .AddArgument(maxReturnedLineChars)
             .AddArgument(maxElapsedMilliseconds)

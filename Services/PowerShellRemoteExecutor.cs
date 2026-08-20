@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Management.Automation;
 using System.Runtime.Versioning;
 using System.Security;
@@ -70,15 +71,15 @@ public sealed class PowerShellRemoteExecutor
     {
         EnsureWindows(server);
 
-        using var timeoutSource = new CancellationTokenSource(timeout ?? _defaultTimeout);
+        var effectiveTimeout = timeout ?? _defaultTimeout;
+        using var timeoutSource = new CancellationTokenSource(effectiveTimeout);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeoutSource.Token);
-        using var gateLease = await _gate.AcquireAsync(server.Name, linkedSource.Token)
-            .ConfigureAwait(false);
-
         try
         {
+            using var gateLease = await _gate.AcquireAsync(server.Name, linkedSource.Token)
+                .ConfigureAwait(false);
             var remoteResults = await InvokeRemoteAsync(
                 server,
                 scriptBody,
@@ -97,14 +98,14 @@ public sealed class PowerShellRemoteExecutor
 
             throw new TimeoutException(
                 $"Remote invocation on '{server.Host}' exceeded its " +
-                $"{(timeout ?? _defaultTimeout).TotalSeconds:F0}-second timeout.");
+                $"{effectiveTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)}-second timeout.");
         }
         catch (OperationCanceledException) when (
             timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException(
                 $"Remote invocation on '{server.Host}' exceeded its " +
-                $"{(timeout ?? _defaultTimeout).TotalSeconds:F0}-second timeout.");
+                $"{effectiveTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)}-second timeout.");
         }
     }
 
