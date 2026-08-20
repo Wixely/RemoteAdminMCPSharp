@@ -34,6 +34,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="RemoteAdminMCPSharp.Tests\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="RemoteAdminMCPSharp.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
