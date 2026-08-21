@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Management.Automation;
 using System.Runtime.Versioning;
 using System.Security;
+using Microsoft.Extensions.Options;
 using RemoteAdminMCPSharp.Configuration;
 
 namespace RemoteAdminMCPSharp.Services;
@@ -17,10 +19,13 @@ namespace RemoteAdminMCPSharp.Services;
 public sealed class PowerShellRemoteExecutor
 {
     private readonly ConcurrencyGate _gate;
+    private readonly TimeSpan _defaultTimeout;
 
-    public PowerShellRemoteExecutor(ConcurrencyGate gate)
+    public PowerShellRemoteExecutor(ConcurrencyGate gate, IOptions<RemoteAdminOptions> options)
     {
         _gate = gate;
+        _defaultTimeout = TimeSpan.FromSeconds(
+            Math.Max(1, options.Value.RemoteOperationTimeoutSeconds));
     }
 
     /// <summary>
@@ -51,6 +56,59 @@ public sealed class PowerShellRemoteExecutor
         return SerializeToJson(remoteResults, jsonDepth);
     }
 
+    /// <summary>
+    /// Run a PowerShell script on the remote host with request cancellation and a hard timeout.
+    /// Stopping the local pipeline also stops the associated Invoke-Command remote pipeline, so
+    /// remote file and event-log handles are released by their script-level finally blocks.
+    /// </summary>
+    public async Task<string> InvokeRemoteJsonAsync(
+        ResolvedServer server,
+        string scriptBody,
+        IReadOnlyList<object?>? args = null,
+        int jsonDepth = 4,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureWindows(server);
+
+        var effectiveTimeout = timeout ?? _defaultTimeout;
+        using var timeoutSource = new CancellationTokenSource(effectiveTimeout);
+        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutSource.Token);
+        try
+        {
+            using var gateLease = await _gate.AcquireAsync(server.Name, linkedSource.Token)
+                .ConfigureAwait(false);
+            var remoteResults = await InvokeRemoteAsync(
+                server,
+                scriptBody,
+                args,
+                linkedSource.Token).ConfigureAwait(false);
+            return SerializeToJson(remoteResults, jsonDepth);
+        }
+        catch (PipelineStoppedException) when (linkedSource.IsCancellationRequested)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(
+                    "The remote operation was cancelled by the caller.",
+                    cancellationToken);
+            }
+
+            throw new TimeoutException(
+                $"Remote invocation on '{server.Host}' exceeded its " +
+                $"{effectiveTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)}-second timeout.");
+        }
+        catch (OperationCanceledException) when (
+            timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Remote invocation on '{server.Host}' exceeded its " +
+                $"{effectiveTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)}-second timeout.");
+        }
+    }
+
     private static Collection<PSObject> InvokeRemote(
         ResolvedServer server,
         string scriptBody,
@@ -79,6 +137,68 @@ public sealed class PowerShellRemoteExecutor
                 $"Remote invocation on '{server.Host}' returned errors:\n{errors}");
         }
         return results;
+    }
+
+    private static async Task<Collection<PSObject>> InvokeRemoteAsync(
+        ResolvedServer server,
+        string scriptBody,
+        IReadOnlyList<object?>? args,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var ps = PowerShell.Create();
+        ConfigureRemoteInvocation(ps, server, scriptBody, args);
+
+        var invocation = ps.BeginInvoke();
+        using var registration = cancellationToken.Register(static state =>
+        {
+            try
+            {
+                ((PowerShell)state!).Stop();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Completion won the race with cancellation.
+            }
+            catch (InvalidPowerShellStateException)
+            {
+                // The pipeline already completed or stopped.
+            }
+        }, ps);
+
+        var results = await Task<PSDataCollection<PSObject>>.Factory.FromAsync(
+            invocation,
+            ps.EndInvoke).ConfigureAwait(false);
+
+        if (ps.HadErrors)
+        {
+            var errors = string.Join("\n", ps.Streams.Error.Select(e => e.ToString()));
+            throw new InvalidOperationException(
+                $"Remote invocation on '{server.Host}' returned errors:\n{errors}");
+        }
+
+        return new Collection<PSObject>(results.ToList());
+    }
+
+    private static void ConfigureRemoteInvocation(
+        PowerShell ps,
+        ResolvedServer server,
+        string scriptBody,
+        IReadOnlyList<object?>? args)
+    {
+        var scriptBlock = ScriptBlock.Create(scriptBody);
+
+        ps.AddCommand("Invoke-Command")
+          .AddParameter("ComputerName", server.Host)
+          .AddParameter("ScriptBlock", scriptBlock);
+
+        var cred = ToCredential(server.Credentials);
+        if (cred is not null)
+            ps.AddParameter("Credential", cred);
+
+        if (args is { Count: > 0 })
+            ps.AddParameter("ArgumentList", args.ToArray());
     }
 
     private static string SerializeToJson(Collection<PSObject> input, int depth)

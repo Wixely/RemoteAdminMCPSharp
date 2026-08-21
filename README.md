@@ -9,7 +9,8 @@ It exposes an MCP endpoint over Streamable HTTP.
 **Windows (WinRM via PowerShell SDK)**
 - Diagnostics: `win_list_services`, `win_service_details`, `win_list_processes`, `win_list_storage`, `win_list_active_users`, `win_cpu_usage`, `win_ram_usage`, `win_os_version`, `win_system_info`
 - IIS (read): `win_iis_list_sites`, `win_iis_list_app_pools`
-- Files (read): `win_list_files`, `win_read_file`, `win_file_properties`
+- Event logs (read): `win_list_event_logs`, `win_search_event_log`
+- Files (read): `win_list_files`, `win_read_file`, `win_file_properties`, `win_search_large_file`
 - Management *(gated by `ReadOnly`)*: `win_start_service`, `win_stop_service`, `win_restart_service`, `win_set_service_startup_type`, `win_create_service`, `win_delete_service`, `win_kill_process`
 - IIS management *(gated by `ReadOnly`)*: `win_iis_start_site`, `win_iis_stop_site`, `win_iis_delete_site`, `win_iis_start_app_pool`, `win_iis_stop_app_pool`, `win_iis_recycle_app_pool`, `win_iis_delete_app_pool`, `win_iis_reset`
 - File management *(gated by `ReadOnly`)*: `win_write_file`, `win_append_to_file`, `win_create_folder`, `win_delete_file`, `win_delete_folder`, `win_copy_path`, `win_move_path`
@@ -211,6 +212,39 @@ line.
 Concurrency limits parallelism, not frequency. If you want to floor the *interval* between
 operations against the same server (e.g. "no more than one CPU sample every 5 seconds per host")
 set `MinIntervalPerServerMs` to that interval in milliseconds. It's off by default.
+
+## Operational log investigation
+
+The Windows log tools are read-only and perform filtering on the target so that large source
+logs are not copied into the MCP server process.
+
+- `win_list_event_logs` enumerates live channels with enabled state, accessibility errors,
+  record count, size, retention mode, and provider metadata. Pass its `NextContinuation` value
+  back as `continuation` to page in stable channel-name order.
+- `win_search_event_log` searches either one live channel or an exported `.evtx` file. Time,
+  provider, event ID, level, machine, and record-ID continuation filters are included in the
+  source XPath. Optional message/XML text filtering examines no more than `maxEventsScanned`
+  source-filtered events. Page with `NextContinuationRecordId` while keeping the other filters
+  and `oldestFirst` unchanged.
+- `win_search_large_file` scans raw bytes incrementally and returns bounded matches with line
+  numbers, byte offsets, and optional context. It supports literal or timeout-limited regular
+  expressions and `auto`, UTF-8, ASCII, Latin-1, UTF-16, and UTF-32 encodings. Page with
+  `NextOffset`, `NextLineNumber`, `SnapshotLengthBytes`, and `FileIdentity` from the prior result.
+
+Large-file `snapshot` mode (the default) fixes the searchable end at the length observed by the
+first page, even if a service continues appending. `follow` waits for appended complete lines
+until a match, byte, or elapsed-time limit is reached. Reads request
+`FileShare.ReadWrite | FileShare.Delete`, which accommodates typical active and rotating logs but
+cannot override an incompatible handle opened by another process. Results explicitly report
+exclusive access failures, replacement/rotation, truncation, growth, invalid byte sequences,
+oversized lines, incomplete trailing records, regex timeouts, and which scan limit stopped the
+page. Cancelling the MCP request or reaching the operation timeout stops the WinRM pipeline and
+releases the target-side handles.
+
+Continuation offsets always identify complete line boundaries. If a byte or elapsed-time limit is
+reached partway through a line, the result uses `Status: LimitReachedMidLine` and
+`ContinuationBlocked: true`; increase the relevant limit and retry that page rather than reusing
+its unchanged offset.
 
 ## Prerequisites — Windows targets
 
